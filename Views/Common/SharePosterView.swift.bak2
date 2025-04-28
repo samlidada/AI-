@@ -1,0 +1,358 @@
+import SwiftUI
+
+/// 分享海报视图
+/// 用于生成包含用户信息和品牌元素的分享海报
+struct SharePosterView: View {
+    // MARK: - 属性
+    
+    /// 用户是否已登录
+    var isUserLoggedIn: Bool
+    
+    /// 用户名称
+    var userName: String?
+    
+    /// 用户头像
+    var userAvatar: UIImage?
+    
+    /// 目标对象
+    var goal: Goal?
+    
+    /// 自定义内容视图
+    var contentView: AnyView?
+    
+    // 添加调试标记
+    @State private var logoLoadFailed = false
+    @State private var companyLogoLoadFailed = false
+    
+    // MARK: - 初始化方法
+    
+    /// 创建分享海报视图
+    /// - Parameters:
+    ///   - isUserLoggedIn: 用户是否已登录
+    ///   - userName: 用户名称，未登录用户可为nil
+    ///   - userAvatar: 用户头像，未登录用户可为nil
+    ///   - goal: 目标对象，用于展示目标信息
+    ///   - contentView: 自定义内容视图，若提供则优先使用
+    init(isUserLoggedIn: Bool, userName: String? = nil, userAvatar: UIImage? = nil, goal: Goal? = nil, contentView: AnyView? = nil) {
+        self.isUserLoggedIn = isUserLoggedIn
+        self.userName = userName
+        self.userAvatar = userAvatar
+        self.goal = goal
+        self.contentView = contentView
+    }
+    
+    // MARK: - 计算属性
+    
+    /// 显示的用户名
+    private var displayName: String {
+        if isUserLoggedIn, let name = userName, !name.isEmpty {
+            return name
+        }
+        return "未登录用户"
+    }
+    
+    /// 显示的头像
+    private var displayAvatar: Image {
+        if isUserLoggedIn, let avatar = userAvatar {
+            return Image(uiImage: avatar)
+        }
+        // 使用SF Symbol作为备选
+        return logoLoadFailed ? Image(systemName: "person.circle.fill") : Image("Logo")
+    }
+    
+    // 子任务颜色数组
+    private let taskColors: [Color] = [
+        .blue, .green, .orange, .purple, .pink, .yellow, .teal, .indigo
+    ]
+    
+    // MARK: - 视图组件
+    
+    /// 用户头像视图
+    private var userAvatarView: some View {
+        displayAvatar
+            .resizable()
+            .scaledToFill()
+            .frame(width: 40, height: 40)
+            .clipShape(Circle())
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.3), lineWidth: 1)
+            )
+    }
+    
+    /// 检查Logo是否加载成功
+    private func checkLogoLoading() {
+        if !isUserLoggedIn && userAvatar == nil {
+            if UIImage(named: "Logo") == nil {
+                logoLoadFailed = true
+                print("⚠️ Logo图像加载失败")
+            } else {
+                print("✅ Logo图像加载成功")
+            }
+        }
+    }
+    
+    /// 公司Logo视图
+    private var companyLogoView: some View {
+        Group {
+            if companyLogoLoadFailed {
+                // 使用SF Symbol作为备选
+                Image(systemName: "building.2.fill")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 30)
+                    .foregroundColor(.white)
+            } else {
+                Image("Logo")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(height: 30)
+            }
+        }
+    }
+    
+    /// 检查公司Logo是否加载成功
+    private func checkCompanyLogoLoading() {
+        if UIImage(named: "Logo") == nil {
+            companyLogoLoadFailed = true
+            print("⚠️ Logo图像加载失败")
+        } else {
+            print("✅ Logo图像加载成功")
+        }
+    }
+    
+    /// 自定义格式化日期
+    private func formatDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "MM月dd日"
+        return formatter.string(from: date)
+    }
+    
+    /// 顶部公司标识栏
+    private var companyHeader: some View {
+        HStack(spacing: 8) {
+            companyLogoView
+                .frame(width: 30, height: 30)
+            
+            Text("大project, 点滴前行")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundColor(.white)
+            
+            Spacer()
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 10)
+    }
+    
+    /// 海报标题
+    private var posterTitle: some View {
+        Text("我又解锁了一个目标")
+            .font(.system(size: 32, weight: .bold))
+            .foregroundColor(.white)
+            .padding(.top, 30)
+            .padding(.bottom, 50)
+            .fixedSize(horizontal: false, vertical: true) // 确保文本能够自适应高度
+    }
+    
+    /// 自定义内容视图的包装
+    @ViewBuilder
+    private var customContentWrapper: some View {
+        if let customView = contentView {
+            customView
+                .fixedSize(horizontal: false, vertical: true) // 确保自定义内容能够自适应高度
+                .padding(.horizontal)
+        } else {
+            EmptyView()
+        }
+    }
+    
+    /// 目标使用时间文本
+    @ViewBuilder
+    private func goalTimeText(_ goal: Goal) -> some View {
+        if let startDate = goal.startExecutionDate,
+           let endDate = goal.completedDate {
+            let diff = Calendar.current.dateComponents([.day, .hour, .minute], from: startDate, to: endDate)
+            
+            let days = diff.day ?? 0
+            let hours = diff.hour ?? 0
+            let minutes = diff.minute ?? 0
+            
+            if days > 0 {
+                Text("\(days)天")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+            } else if hours > 0 {
+                Text("\(hours)小时")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+            } else {
+                Text("\(minutes)分钟")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+            }
+        } else {
+            Text("未知")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.white)
+        }
+    }
+    
+    /// 创建基于目标的信息视图
+    @ViewBuilder
+    private var targetGoalInfoView: some View {
+        if let goal = goal {
+            ZStack {
+                // 中央圆形 - 总时间统计
+                Circle()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(width: 120, height: 120)
+                    .overlay(
+                        VStack(spacing: 4) {
+                            Text("总使用时间")
+                                .font(.system(size: 14))
+                                .foregroundColor(.white)
+                            
+                            goalTimeText(goal)
+                        }
+                    )
+                
+                // 子任务分布图
+                ForEach(0..<min(goal.subTasks.count, 8), id: \.self) { index in
+                    let subTask = goal.subTasks[index]
+                    let angle = Double(index) * (360.0 / Double(min(goal.subTasks.count, 8)))
+                    let radius: CGFloat = 150
+                    
+                    let xPos = sin(angle * .pi / 180) * radius
+                    let yPos = -cos(angle * .pi / 180) * radius
+                    
+                    ZStack {
+                        Circle()
+                            .fill(taskColors[index % taskColors.count].opacity(0.7))
+                            .frame(width: 70, height: 70)
+                            .overlay(
+                                VStack(spacing: 2) {
+                                    // 显示子任务序号
+                                    Circle()
+                                        .fill(Color.white)
+                                        .frame(width: 20, height: 20)
+                                        .overlay(
+                                            Text("\(index + 1)")
+                                                .font(.system(size: 12, weight: .bold))
+                                                .foregroundColor(taskColors[index % taskColors.count])
+                                        )
+                                    
+                                    // 显示子任务名称（截断）
+                                    let title = subTask.title.count > 4 ? String(subTask.title.prefix(4)) + "..." : subTask.title
+                                    Text(title)
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.white)
+                                        .lineLimit(1)
+                                    
+                                    // 显示用时
+                                    Text("\(subTask.estimatedDays)天")
+                                        .font(.system(size: 10))
+                                        .foregroundColor(.white.opacity(0.8))
+                                }
+                            )
+                    }
+                    .offset(x: xPos, y: yPos)
+                }
+            }
+            .frame(height: 350)
+            .fixedSize(horizontal: false, vertical: true) // 确保内容能够自适应高度
+        } else {
+            // 如果没有目标，显示一个空视图
+            EmptyView()
+        }
+    }
+    
+    /// 目标信息视图
+    @ViewBuilder
+    private var goalInfoView: some View {
+        if contentView != nil {
+            customContentWrapper
+                .padding(.bottom, 20) // 添加底部间距使视图更加美观
+        } else if goal != nil {
+            targetGoalInfoView
+                .padding(.bottom, 20) // 添加底部间距使视图更加美观
+        } else {
+            // 如果两者都没有，显示一个占位视图
+            VStack {
+                Text("暂无目标数据")
+                    .foregroundColor(.white)
+                    .padding()
+            }
+            .frame(minHeight: 200) // 给占位内容一个合理的最小高度
+            .padding(.bottom, 20)
+        }
+    }
+    
+    /// 底部用户信息
+    private var userFooter: some View {
+        HStack {
+            // 用户头像
+            Circle()
+                .fill(Color.white)
+                .frame(width: 50, height: 50)
+                .overlay(
+                    userAvatarView
+                        .frame(width: 40, height: 40)
+                )
+            
+            Text("APP LOGO")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.black)
+            
+            Spacer()
+        }
+        .padding()
+        .background(
+            Capsule()
+                .fill(Color.white)
+        )
+        .padding(.horizontal, 20)
+        .padding(.bottom, 20)
+    }
+    
+    // MARK: - 视图主体
+    
+}
+
+// MARK: - 预览
+#if DEBUG
+struct SharePosterView_Previews: PreviewProvider {
+    static var previews: some View {
+        let demoView = createDemoSharePosterView()
+        return demoView
+    }
+    
+    static func createDemoSharePosterView() -> some View {
+        // 示例Goal
+        let goal = Goal(title: "制作一款APP", goalDescription: "完成一个iOS应用开发")
+        
+        // 添加示例子任务
+        let subTask1 = SubTask(title: "对谈", goal: goal, order: 0, estimatedDays: 2)
+        let subTask2 = SubTask(title: "所有子任务", goal: goal, order: 1, estimatedDays: 3)
+        let subTask3 = SubTask(title: "研究", goal: goal, order: 2, estimatedDays: 1)
+        let subTask4 = SubTask(title: "完成方案", goal: goal, order: 3, estimatedDays: 2)
+        let subTask5 = SubTask(title: "成果提交", goal: goal, order: 4, estimatedDays: 1)
+        let subTask6 = SubTask(title: "所有交付时间", goal: goal, order: 5, estimatedDays: 3)
+        
+        goal.subTasks = [subTask1, subTask2, subTask3, subTask4, subTask5, subTask6]
+        
+        // 设置开始和完成时间
+        let calendar = Calendar.current
+        let now = Date()
+        let startDate = calendar.date(byAdding: .day, value: -10, to: now)!
+        
+        // 手动设置Goal的属性
+        goal.startExecutionDate = startDate
+        goal.completedDate = now
+        
+        return SharePosterView(
+            isUserLoggedIn: false,
+            goal: goal
+        )
+    }
+}
+#endif 

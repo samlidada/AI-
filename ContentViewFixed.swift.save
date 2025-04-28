@@ -1,0 +1,4 @@
+^C
+echo "// 测试文件" > ContentViewFixed.swift && cat ContentViewFixed.swift
+^C
+

@@ -1,0 +1,244 @@
+import SwiftUI
+import SwiftData
+import UniformTypeIdentifiers
+import PhotosUI
+import UIKit
+import Combine
+
+// 定义通知名称常量
+extension Notification.Name {
+    static let resetDragStates = Notification.Name("resetDragStates")
+}
+
+// 添加View扩展，支持if条件修饰
+extension View {
+    @ViewBuilder
+    func `if`<Content: View>(_ condition: Bool, transform: (Self) -> Content) -> some View {
+        if condition {
+            transform(self)
+        } else {
+            self
+        }
+    }
+}
+
+// 分享相关组件
+struct ShareSheet: UIViewControllerRepresentable {
+    var items: [Any]
+    
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        let controller = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
+// 目标分享按钮组件
+struct GoalShareButton: View {
+    let goal: Goal
+    @State private var isSharePresented: Bool = false
+    @State private var shareImage: UIImage?
+    
+    var body: some View {
+        Button(action: {
+            // 生成分享图片
+            shareImage = generateShareImage(for: goal)
+            isSharePresented = true
+        }) {
+            HStack(spacing: 4) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 14))
+                Text("分享")
+                    .font(.system(size: 14))
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .background(Color.blue.opacity(0.1))
+            .foregroundColor(.blue)
+            .cornerRadius(20)
+        }
+        .sheet(isPresented: $isSharePresented) {
+            if let image = shareImage {
+                ShareSheet(items: [image])
+            }
+        }
+    }
+    
+    // 根据目标内容生成分享图片
+    private func generateShareImage(for goal: Goal) -> UIImage {
+        // 创建一个绘制图片的上下文
+        let renderer = UIGraphicsImageRenderer(size: CGSize(width: 1080, height: 1920))
+        
+        return renderer.image { context in
+            // 背景颜色
+            let backgroundColor: UIColor = .systemBackground
+            backgroundColor.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 1080, height: 1920))
+            
+            // 获取绘制上下文
+            let ctx = context.cgContext
+            
+            // 绘制顶部装饰条
+            let gradientColors = [
+                UIColor.systemBlue.cgColor,
+                UIColor.systemBlue.withAlphaComponent(0.7).cgColor
+            ]
+            let colorSpace = CGColorSpaceCreateDeviceRGB()
+            let colorLocations: [CGFloat] = [0.0, 1.0]
+            
+            if let gradient = CGGradient(
+                colorsSpace: colorSpace,
+                colors: gradientColors as CFArray,
+                locations: colorLocations
+            ) {
+                ctx.drawLinearGradient(
+                    gradient,
+                    start: CGPoint(x: 0, y: 0),
+                    end: CGPoint(x: 1080, y: 0),
+                    options: []
+                )
+            }
+            
+            // 绘制标题
+            let titleAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 60, weight: .bold),
+                .foregroundColor: UIColor.label
+            ]
+            
+            let titleText = "目标完成！"
+            let titleSize = titleText.size(withAttributes: titleAttributes)
+            let titleRect = CGRect(
+                x: (1080 - titleSize.width) / 2,
+                y: 300,
+                width: titleSize.width,
+                height: titleSize.height
+            )
+            titleText.draw(in: titleRect, withAttributes: titleAttributes)
+            
+            // 绘制目标内容
+            let goalTextAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 40, weight: .semibold),
+                .foregroundColor: UIColor.label
+            ]
+            
+            // 使用段落样式来设置文本对齐和换行
+            let paragraphStyle = NSMutableParagraphStyle()
+            paragraphStyle.alignment = .center
+            paragraphStyle.lineBreakMode = .byWordWrapping
+            
+            var goalTextAttributesWithParagraph = goalTextAttributes
+            goalTextAttributesWithParagraph[.paragraphStyle] = paragraphStyle
+            
+            // 绘制目标标题
+            let goalTitle = goal.title
+            let goalTitleRect = CGRect(x: 100, y: 450, width: 880, height: 300)
+            goalTitle.draw(in: goalTitleRect, withAttributes: goalTextAttributesWithParagraph)
+            
+            // 绘制完成日期
+            let dateFormatter = DateFormatter()
+            dateFormatter.dateStyle = .long
+            dateFormatter.timeStyle = .short
+            
+            let completedDateText = "完成于: \(dateFormatter.string(from: goal.completedDate ?? Date()))"
+            let dateAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 30, weight: .regular),
+                .foregroundColor: UIColor.secondaryLabel,
+                .paragraphStyle: paragraphStyle
+            ]
+            
+            let dateRect = CGRect(x: 100, y: 800, width: 880, height: 40)
+            completedDateText.draw(in: dateRect, withAttributes: dateAttributes)
+            
+            // 绘制评分（如果有）
+            if let score = goal.aiScore {
+                let scoreText = "AI评分: \(score)/100"
+                let scoreAttributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 32, weight: .bold),
+                    .foregroundColor: scoreColorUIColor(score),
+                    .paragraphStyle: paragraphStyle
+                ]
+                
+                let scoreRect = CGRect(x: 100, y: 900, width: 880, height: 40)
+                scoreText.draw(in: scoreRect, withAttributes: scoreAttributes)
+            }
+            
+            // 绘制评语（如果有）
+            if let comment = goal.aiComment, !comment.isEmpty {
+                let commentTitle = "AI点评:"
+                let commentTitleAttributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 32, weight: .bold),
+                    .foregroundColor: UIColor.label
+                ]
+                
+                let commentTitleRect = CGRect(x: 100, y: 1000, width: 880, height: 40)
+                commentTitle.draw(in: commentTitleRect, withAttributes: commentTitleAttributes)
+                
+                let commentAttributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 28, weight: .regular),
+                    .foregroundColor: UIColor.label
+                ]
+                
+                let commentParagraphStyle = NSMutableParagraphStyle()
+                commentParagraphStyle.alignment = .left
+                commentParagraphStyle.lineBreakMode = .byWordWrapping
+                
+                var commentAttributesWithParagraph = commentAttributes
+                commentAttributesWithParagraph[.paragraphStyle] = commentParagraphStyle
+                
+                // 使用UITextView绘制多行文本
+                let commentRect = CGRect(x: 100, y: 1050, width: 880, height: 400)
+                comment.draw(in: commentRect, withAttributes: commentAttributesWithParagraph)
+            }
+            
+            // 绘制子任务完成情况
+            let completedCount = goal.completedSubTasksCount
+            let totalCount = goal.subTasks.count
+            if totalCount > 0 {
+                let progressText = "完成度: \(completedCount)/\(totalCount)"
+                let progressAttributes: [NSAttributedString.Key: Any] = [
+                    .font: UIFont.systemFont(ofSize: 28, weight: .regular),
+                    .foregroundColor: UIColor.secondaryLabel,
+                    .paragraphStyle: paragraphStyle
+                ]
+                
+                let progressRect = CGRect(x: 100, y: 1500, width: 880, height: 30)
+                progressText.draw(in: progressRect, withAttributes: progressAttributes)
+                
+                // 绘制进度条
+                let progressBarBgRect = CGRect(x: 100, y: 1550, width: 880, height: 20)
+                UIColor.systemGray5.setFill()
+                UIBezierPath(roundedRect: progressBarBgRect, cornerRadius: 10).fill()
+                
+                let progress = CGFloat(completedCount) / CGFloat(totalCount)
+                let progressBarRect = CGRect(x: 100, y: 1550, width: 880 * progress, height: 20)
+                UIColor.systemBlue.setFill()
+                UIBezierPath(roundedRect: progressBarRect, cornerRadius: 10).fill()
+            }
+            
+            // 绘制应用名称
+            let appNameText = "目标达成 App"
+            let appNameAttributes: [NSAttributedString.Key: Any] = [
+                .font: UIFont.systemFont(ofSize: 24, weight: .regular),
+                .foregroundColor: UIColor.tertiaryLabel,
+                .paragraphStyle: paragraphStyle
+            ]
+            
+            let appNameRect = CGRect(x: 100, y: 1800, width: 880, height: 30)
+            appNameText.draw(in: appNameRect, withAttributes: appNameAttributes)
+        }
+    }
+    
+    // 根据评分返回颜色
+    private func scoreColorUIColor(_ score: Int) -> UIColor {
+        if score >= 90 {
+            return UIColor.systemGreen
+        } else if score >= 75 {
+            return UIColor.systemBlue
+        } else if score >= 60 {
+            return UIColor.systemOrange
+        } else {
+            return UIColor.systemRed
+        }
+    }
+}

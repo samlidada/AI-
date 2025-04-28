@@ -1,0 +1,421 @@
+//
+//  ContentView.swift
+//  Project
+//
+//  Created by 李大大 on 2025/4/3.
+//
+
+import SwiftUI
+import SwiftData
+
+struct ContentView: View {
+    @Environment(\.modelContext) private var modelContext
+    @StateObject private var viewModel = GoalViewModel(modelContext: nil)
+    @State private var showingAddGoal = false
+    @State private var showingMenu = false
+    
+    
+    // 当环境中的modelContext可用时，更新viewModel
+    private func updateViewModel() {
+        viewModel.modelContext = modelContext
+        viewModel.fetchGoals()
+    }
+    
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 0) {
+                // 主内容区
+                GoalListView(viewModel: viewModel, searchText: searchText)
+                
+                // 底部添加按钮
+                VStack {
+                    Divider()
+                    HStack {
+                        Spacer()
+                        
+                        Button(action: {
+                            showingAddGoal = true
+                        }) {
+                            Image(systemName: "plus.circle.fill")
+                                .resizable()
+                                .frame(width: 24, height: 24)
+                                .foregroundColor(.blue)
+                        }
+                        .padding(.trailing)
+                    }
+                    .frame(height: 50)
+                }
+            }
+            .navigationTitle("目标清单")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button(action: {
+                        showingMenu = true
+                    }) {
+                        Image(systemName: "line.horizontal.3")
+                    }
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: {
+                        // 将来实现搜索功能
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                    }
+                }
+            }
+            .sheet(isPresented: $showingAddGoal) {
+                AddGoalView(viewModel: viewModel)
+            }
+            .sheet(isPresented: $showingMenu) {
+                MenuView()
+            }
+            .searchable(text: $searchText, prompt: "搜索目标")
+        }
+        .onAppear {
+            updateViewModel()
+        }
+    }
+}
+
+// 目标列表视图
+struct GoalListView: View {
+    @ObservedObject var viewModel: GoalViewModel
+    var searchText: String
+    
+    var filteredSections: [DateSection] {
+        if searchText.isEmpty {
+            return viewModel.goalsByDateSection()
+        } else {
+            let filteredGoals = viewModel.goals.filter { goal in
+                goal.title.localizedCaseInsensitiveContains(searchText) ||
+                goal.goalDescription.localizedCaseInsensitiveContains(searchText)
+            }
+            return [DateSection(title: "搜索结果", goals: filteredGoals)]
+        }
+    }
+    
+    var body: some View {
+        List {
+            ForEach(filteredSections) { section in
+                Section(header: Text(section.title)) {
+                    ForEach(section.goals) { goal in
+                        GoalRowView(goal: goal, viewModel: viewModel)
+                            .swipeActions(edge: .trailing) {
+                                if !goal.isCompleted {
+                                    Button(action: {
+                                        viewModel.markAsCompleted(goal)
+                                    }) {
+                                        Label("完成", systemImage: "checkmark.circle")
+                                    }
+                                    .tint(.green)
+                                }
+                                
+                                Button(action: {
+                                    viewModel.deleteGoal(goal)
+                                }) {
+                                    Label("删除", systemImage: "trash")
+                                }
+                                .tint(.red)
+                            }
+                    }
+                }
+            }
+        }
+        .overlay {
+            if viewModel.goals.isEmpty {
+                ContentUnavailableView {
+                    Label("暂无目标", systemImage: "checklist")
+                } description: {
+                    Text("点击底部 + 按钮添加新目标")
+                }
+            }
+        }
+        .refreshable {
+            viewModel.fetchGoals()
+        }
+    }
+}
+
+// 目标行视图
+struct GoalRowView: View {
+    let goal: Goal
+    @ObservedObject var viewModel: GoalViewModel
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text(goal.title)
+                    .font(.headline)
+                    .strikethrough(goal.isCompleted)
+                
+                Spacer()
+                
+                // 优先级标识
+                priorityIndicator
+            }
+            
+            if !goal.goalDescription.isEmpty {
+                Text(goal.goalDescription)
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .lineLimit(2)
+            }
+            
+            HStack {
+                // 状态指示器
+                statusIndicator
+                
+                Spacer()
+                
+                // 倒计时
+                countdownIndicator
+            }
+            .padding(.top, 4)
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .opacity(goal.isCompleted ? 0.6 : 1.0)
+    }
+    
+    // 优先级指示器
+    private var priorityIndicator: some View {
+        HStack(spacing: 2) {
+            ForEach(0..<priorityLevel, id: \.self) { _ in
+                Circle()
+                    .fill(priorityColor)
+                    .frame(width: 6, height: 6)
+            }
+        }
+    }
+    
+    // 状态指示器
+    private var statusIndicator: some View {
+        HStack(spacing: 4) {
+            Circle()
+                .fill(statusColor)
+                .frame(width: 8, height: 8)
+            
+            Text(goal.status.rawValue)
+                .font(.caption)
+                .foregroundColor(.secondary)
+        }
+    }
+    
+    // 倒计时指示器
+    private var countdownIndicator: some View {
+        Group {
+            if let daysRemaining = goal.daysRemaining {
+                if daysRemaining > 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "clock")
+                            .font(.caption2)
+                        Text("还剩 \(daysRemaining) 天")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.secondary)
+                } else if daysRemaining == 0 {
+                    HStack(spacing: 2) {
+                        Image(systemName: "exclamationmark.circle")
+                            .font(.caption2)
+                        Text("今天到期")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.orange)
+                } else {
+                    HStack(spacing: 2) {
+                        Image(systemName: "exclamationmark.circle")
+                            .font(.caption2)
+                        Text("已逾期 \(abs(daysRemaining)) 天")
+                            .font(.caption)
+                    }
+                    .foregroundColor(.red)
+                }
+            } else if goal.isCompleted, let completedDate = goal.completedDate {
+                HStack(spacing: 2) {
+                    Image(systemName: "checkmark.circle")
+                        .font(.caption2)
+                    Text("已完成于 \(formattedDate(completedDate))")
+                        .font(.caption)
+                }
+                .foregroundColor(.green)
+            }
+        }
+    }
+    
+    // 优先级相关计算属性
+    private var priorityLevel: Int {
+        switch goal.priority {
+        case .high: return 3
+        case .medium: return 2
+        case .low: return 1
+        }
+    }
+    
+    private var priorityColor: Color {
+        switch goal.priority {
+        case .high: return .red
+        case .medium: return .orange
+        case .low: return .blue
+        }
+    }
+    
+    // 状态颜色
+    private var statusColor: Color {
+        switch goal.status {
+        case .notStarted: return .gray
+        case .inProgress: return .blue
+        case .completed: return .green
+        case .overdue: return .red
+        }
+    }
+    
+    // 日期格式化
+    private func formattedDate(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.dateStyle = .short
+        formatter.timeStyle = .none
+        return formatter.string(from: date)
+    }
+}
+
+// 添加目标视图
+struct AddGoalView: View {
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject var viewModel: GoalViewModel
+    
+    @State private var title = ""
+    @State private var description = ""
+    @State private var priority: GoalPriority = .medium
+    @State private var hasDeadline = false
+    @State private var targetDate = Date().addingTimeInterval(7 * 24 * 60 * 60) // 默认一周后
+    
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section(header: Text("目标信息")) {
+                    TextField("目标标题", text: $title)
+                    TextField("描述（可选）", text: $description, axis: .vertical)
+                        .lineLimit(3, reservesSpace: true)
+                }
+                
+                Section(header: Text("优先级")) {
+                    Picker("优先级", selection: $priority) {
+                        ForEach(GoalPriority.allCases, id: \.self) { priority in
+                            Text(priority.rawValue).tag(priority)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                }
+                
+                Section(header: Text("截止日期")) {
+                    Toggle("设置截止日期", isOn: $hasDeadline)
+                    
+                    if hasDeadline {
+                        DatePicker("截止日期", selection: $targetDate, displayedComponents: [.date])
+                    }
+                }
+            }
+            .navigationTitle("添加新目标")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        dismiss()
+                    }
+                }
+                
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("保存") {
+                        saveGoal()
+                    }
+                    .disabled(title.isEmpty)
+                }
+            }
+        }
+    }
+    
+    private func saveGoal() {
+        viewModel.addGoal(
+            title: title,
+            goalDescription: description,
+            priority: priority,
+            targetDate: hasDeadline ? targetDate : nil
+        )
+        dismiss()
+    }
+}
+
+// 菜单视图
+struct MenuView: View {
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            List {
+                // 用户配置区
+                Section {
+                    NavigationLink(destination: Text("登录页面")) {
+                        HStack {
+                            Image(systemName: "person.circle")
+                                .font(.title2)
+                                .foregroundColor(.blue)
+                            
+                            VStack(alignment: .leading) {
+                                Text("未登录")
+                                    .font(.headline)
+                                Text("点击登录或注册")
+                                    .font(.caption)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        .padding(.vertical, 8)
+                    }
+                }
+                
+                // 功能区
+                Section {
+                    NavigationLink(destination: Text("我的资料")) {
+                        Label("我的资料", systemImage: "person")
+                    }
+                    
+                    NavigationLink(destination: Text("数据分析")) {
+                        Label("数据分析", systemImage: "chart.bar")
+                    }
+                    
+                    NavigationLink(destination: Text("设置")) {
+                        Label("设置", systemImage: "gear")
+                    }
+                }
+                
+                // 关于区
+                Section {
+                    NavigationLink(destination: Text("关于应用")) {
+                        Label("关于", systemImage: "info.circle")
+                    }
+                    
+                    Button(action: {
+                        // 暂不实现
+                    }) {
+                        Label("分享应用", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
+            .navigationTitle("菜单")
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button(action: {
+                        dismiss()
+                    }) {
+                        Image(systemName: "xmark")
+                    }
+                }
+            }
+        }
+    }
+}
+
+#Preview {
+    ContentView()
+}
