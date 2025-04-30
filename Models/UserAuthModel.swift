@@ -231,4 +231,61 @@ class UserManager: ObservableObject {
             return "用户"
         }
     }
+    
+    // 注销账号并彻底删除所有本地数据
+    @MainActor
+    func deleteAccount(modelContext: ModelContext?, completion: @escaping (Bool) -> Void) async {
+        if let context = modelContext {
+            do {
+                // 1. 先删CompletionProof
+                let proofs = try context.fetch(FetchDescriptor<CompletionProof>())
+                for proof in proofs {
+                    context.delete(proof)
+                }
+                // 2. 再删ProofImage
+                let images = try context.fetch(FetchDescriptor<ProofImage>())
+                for image in images {
+                    context.delete(image)
+                }
+                // 3. 再删SubTask
+                let subTasks = try context.fetch(FetchDescriptor<SubTask>())
+                for subTask in subTasks {
+                    context.delete(subTask)
+                }
+                // 4. 最后删Goal
+                let goals = try context.fetch(FetchDescriptor<Goal>())
+                for goal in goals {
+                    context.delete(goal)
+                }
+                try context.save()
+            } catch {
+                print("删除SwiftData数据失败: \(error)")
+                completion(false)
+                return
+            }
+        }
+        // 2. 清除所有UserDefaults中的用户信息
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: userIDKey)
+        defaults.removeObject(forKey: userNameKey)
+        defaults.removeObject(forKey: userEmailKey)
+        defaults.removeObject(forKey: userAvatarKey)
+        defaults.set(false, forKey: isLoggedInKey)
+        // 清除用户特定数据
+        if !userID.isEmpty {
+            defaults.removeObject(forKey: userSpecificKey("userName"))
+            defaults.removeObject(forKey: userSpecificKey("userEmail"))
+            defaults.removeObject(forKey: userSpecificKey("userAvatar"))
+        }
+        // 3. 清除内存中的用户信息
+        userID = ""
+        userName = ""
+        userEmail = ""
+        isLoggedIn = false
+        userAvatar = nil
+        isReviewAccount = false
+        // 4. 发送通知
+        NotificationCenter.default.post(name: Notification.Name("UserDidDeleteAccount"), object: nil)
+        completion(true)
+    }
 } 

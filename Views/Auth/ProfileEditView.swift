@@ -4,11 +4,13 @@ import PhotosUI
 struct ProfileEditView: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var userManager = UserManager.shared
+    @Environment(\.modelContext) private var modelContext
     
     // 用于临时存储编辑的用户信息
     @State private var editedName: String = ""
     @State private var editedAvatar: UIImage?
     @State private var selectedPhoto: PhotosPickerItem?
+    @State private var showingDeleteAlert = false
     
     // 保存按钮启用状态
     var saveEnabled: Bool {
@@ -102,6 +104,16 @@ struct ProfileEditView: View {
                             Spacer()
                         }
                     }
+                    Button(role: .destructive) {
+                        showingDeleteAlert = true
+                    } label: {
+                        HStack {
+                            Spacer()
+                            Text("删除账号（不可恢复）")
+                                .foregroundColor(.red)
+                            Spacer()
+                        }
+                    }
                 }
             }
             .navigationTitle("个人资料")
@@ -124,6 +136,22 @@ struct ProfileEditView: View {
             .onAppear {
                 // 初始化编辑状态
                 editedName = userManager.userName
+            }
+            .alert("确定要删除账号吗？", isPresented: $showingDeleteAlert) {
+                Button("取消", role: .cancel) {}
+                Button("删除", role: .destructive) {
+                    Task {
+                        await userManager.deleteAccount(modelContext: modelContext) { success in
+                            if success {
+                                dismiss()
+                            } else {
+                                // 可选：弹窗提示失败
+                            }
+                        }
+                    }
+                }
+            } message: {
+                Text("此操作将删除所有本地数据且无法恢复。\n删除后将自动退出登录。")
             }
         }
     }
